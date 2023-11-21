@@ -1,9 +1,8 @@
 use scraper::{Html, Selector};
 use std::collections::HashSet;
 use tokio::fs::File;
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use url::Url;
-use image::io::Reader as ImageReader;
 use reqwest::header::CONTENT_TYPE;
 
 #[tokio::main]
