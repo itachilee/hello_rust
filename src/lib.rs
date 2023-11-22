@@ -2,7 +2,7 @@
 
 use reqwest::header::CONTENT_TYPE;
 use std::collections::HashSet;
-use tokio::fs::File;
+use tokio::fs::{File,OpenOptions};
 use tokio::io::AsyncWriteExt;
 use std::collections::HashMap;
 use reqwest::header::HeaderMap;
@@ -98,22 +98,34 @@ pub  async fn do_get(url:&str) -> Result<String, reqwest::Error>{
 }
 
 
-async fn save_chapter_to_file(index: usize, title: &str, content: &str) -> Result<(),Box::<dyn std::error::Error>> {
-    let mut file = File::create(format!("chapter_{}.txt", index)).await?;
-    writeln!(file, "{}", title)?;
-    writeln!(file, "{}", content)?;
+pub async  fn save_chapter_to_file(index: usize, title: &str, content: &str) -> Result<(),Box::<dyn std::error::Error>> {
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(format!("chapter_{}.txt", index))
+        .await?;
+
+        file.write_all(title.as_bytes()).await?;
+        file.write_all(content.as_bytes()).await?;
 
     Ok(())
 }
 
-async fn merge_chapters_to_file(chapter_links: &[String]) -> Result<(),Box::<dyn std::error::Error>> {
-    let mut merged_file = File::create("merged_book.txt").await?;
+pub async fn merge_chapters_to_file(chapter_links: &[String]) -> Result<(),Box::<dyn std::error::Error>> {
 
+
+
+    
+    let mut merged_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("merged_book.txt")
+        .await?;
     for (index, chapter_link) in chapter_links.iter().enumerate() {
         let chapter_file_name = format!("chapter_{}.txt", index + 1);
-        let chapter_content = std::fs::read_to_string(chapter_file_name)?;
-
-        writeln!(merged_file, "{}", chapter_content)?;
+        let chapter_content = tokio::fs::read_to_string(chapter_file_name).await?;
+        merged_file.write_all(chapter_content.as_bytes()).await?;
     }
 
     Ok(())
