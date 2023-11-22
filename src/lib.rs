@@ -98,6 +98,28 @@ pub  async fn do_get(url:&str) -> Result<String, reqwest::Error>{
 }
 
 
+async fn save_chapter_to_file(index: usize, title: &str, content: &str) -> Result<(),Box::<dyn std::error::Error>> {
+    let mut file = File::create(format!("chapter_{}.txt", index)).await?;
+    writeln!(file, "{}", title)?;
+    writeln!(file, "{}", content)?;
+
+    Ok(())
+}
+
+async fn merge_chapters_to_file(chapter_links: &[String]) -> Result<(),Box::<dyn std::error::Error>> {
+    let mut merged_file = File::create("merged_book.txt").await?;
+
+    for (index, chapter_link) in chapter_links.iter().enumerate() {
+        let chapter_file_name = format!("chapter_{}.txt", index + 1);
+        let chapter_content = std::fs::read_to_string(chapter_file_name)?;
+
+        writeln!(merged_file, "{}", chapter_content)?;
+    }
+
+    Ok(())
+}
+
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -150,5 +172,14 @@ mod tests {
         let res= html.select(&next_page_selector).next();
 
         assert_eq!(res,None);
+    }
+
+    #[test]
+    fn test_is_empty(){
+
+
+        let r1 =String::new();
+        assert_eq!( true, r1.is_empty());
+
     }
 }
