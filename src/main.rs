@@ -1,126 +1,138 @@
 use scraper::{Html, Selector};
-use std::collections::HashSet;
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
+use std::collections::{HashSet, HashMap};
 use url::Url;
-use reqwest::header::CONTENT_TYPE;
+use hello_rust::{extract_id_from_url,do_get};
+use tokio::time;
+use tokio::time::Instant;
+
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   
-    // let url ="https://m.jcdf99.com/html/18312/";
-    let mut visited_urls = HashSet::new(); // 用于存储已访问过的 URL
-                                           // manga url
-    let url = "http://imgapi.xl0408.top";
-
-    let res = reqwest::get(url).await;
-
-    match res {
-        Ok(resp) => {
-            if resp.status().is_success() {
-                // let body = &resp.text().await.unwrap();
-
-                // 检查响应的 Content-Type 是否为图片类型
-                if let Some(content_type) = &resp.headers().get(CONTENT_TYPE) {
-                    if let Ok(content_type_str) = content_type.to_str() {
-                        if content_type_str.starts_with("image/") {
-                            println!("Downloading image...");
-
-                            // 使用 image 库读取图片数据
-                            let image_data = &resp.bytes().await?;
-                         
-                            // 将图片保存到本地文件
-                            let mut file = File::create("downloaded_image.jpg").await?;
-                            // img.write_to(&mut file, image::ImageOutputFormat::Jpeg(100))?;
+    let url ="https://m.jcdf99.com/html/18312/";
 
 
-                            file.write_all(&image_data).await?;
-                            // file.write_all(&image_data).await?;
-
-                            println!("Image downloaded successfully.");
-                        } else {
-                            println!("The URL does not point to an image.");
-                        }
-                    }
-                }
-
-                // 使用 Scraper 解析页面内容，提取所需数据等操作
-
-                // 记录已访问过的页面 URL
-                visited_urls.insert(url.to_string());
-
-                // 假设这里有一些爬取逻辑，处理页面内容
-
-                // 这里可以添加延时，避免频繁请求
-                // tokio::time::sleep(Duration::from_secs(5)).await;
-            } else {
-                println!("Failed to fetch the page: {}", url);
-            }
-        }
-        Err(e) => {
-            println!("err: {}", e);
-        }
-    }
-
+    // scrape_url(url).await?;
+   
+    get_all().await?;
     Ok(())
-    // scrape_url(url).await
 }
 
-async fn scrape_url(root_url: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let res = reqwest::get(root_url).await?.text().await?;
 
-    // res.status();
 
-    let html = Html::parse_document(&res);
+#[derive(PartialEq, Eq,Clone,Debug)]
+struct Page{
+    url: String,
+    is_last: bool,
+    charpter_links: Vec<(String,String)>
+}
 
-    let root_ref = html.root_element();
-    let title = &root_ref
-        .select(&Selector::parse(".nav_name>h1").unwrap())
-        .next()
-        .unwrap();
-    assert_eq!(title.inner_html(), "将夜");
-
-    let charpt_selector = Selector::parse(".p2>li>a").unwrap();
-    let result: Vec<(String, &str)> = html
-        .select(&charpt_selector)
-        .rev()
-        .map(|e| {
-            if let Some(href) = e.value().attr("href") {
-                (e.inner_html(), href)
-            } else {
-                (e.inner_html(), "")
-            }
-        })
-        .collect();
-
-    for item in result {
-        println!("{} {} ", item.0, item.1);
+impl Page {
+  
+    fn print(&self) {
+        let line_number = line!();
+        println!("[line:{}]Page url: {} is_last:{}",line_number, self.url,self.is_last);
     }
+}
 
+async fn get_all() -> Result<(),Box::<dyn std::error::Error>> {
+    // let start_url = "https://m.jcdf99.com/html/18312/"; // 初始页面 URL
+
+
+    let start_url ="https://m.jcdf99.com/html/18312_39/#all";
+    let mut current_url = start_url.to_string();
+    let base_url ="https://m.jcdf99.com/";
+
+
+    let mut pages: Vec<Page> = Vec::new();
+    loop {
+
+
+        if let Ok(base) = Url::parse(base_url){
+            if  let Ok(url) = base.join(current_url.as_str()){
+
+                current_url = url.to_string();
+            }
+       }
+        let links = extract_links_from_page(&current_url).await;
+
+        // wait 
+        time::sleep(time::Duration::from_millis(500)).await;
+        if let Ok(links) =links{
+                current_url = links.url.clone();
+    
+                pages.push(links.clone());
+                if links.is_last{
+                    break;
+                }
+        }
+        else if let Err(e) = links{
+            println!(" err:{}",e);
+            break;
+        }
+        else{
+            println!("break else");
+            break;
+        }
+       
+    }
+    for i in pages.iter(){
+     
+        if !i.is_last{
+            println!("[iter] {}, {:?}",i.url,i.charpter_links);
+        }
+    }
+    Ok(())
+}
+
+async fn extract_links_from_page(url: &str) -> Result<Page,Box::<dyn std::error::Error>> {
+
+    let base_url ="https://m.jcdf99.com/";
+
+    let base =Url::parse(base_url).unwrap();
     let next_page_selector = Selector::parse(".right>.onclick").unwrap();
 
-    let next_page_url = html
-        .select(&next_page_selector)
-        .next()
-        .unwrap()
-        .value()
-        .attr("href")
-        .unwrap();
+    let start =Instant::now();
+    // let res = reqwest::get(url).await?.text().await?;
 
-    scrape_charpter(&next_page_url).await?;
-    println!("next page url is {}", next_page_url);
+    let res =do_get(url).await?;
+    println!("visiting :{} eplased: {:?}",url,start.elapsed());
+    let html = Html::parse_document(&res);
 
-    Ok(())
-}
 
-async fn scrape_charpter(charpter_url: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let base_url = "https://m.jcdf99.com/";
-    let base = Url::parse(base_url)?;
-    let url = base.join(charpter_url)?;
-    println!("visiting page url: {}", url);
-    // let chartper_content =reqwest::get(url).await?
-    //     .text().await?;
+    if let Some(e) =html.select(&next_page_selector).next() {
+        if let Some(url) = e.value().attr("href") {
 
-    Ok(())
+            let charpt_selector = Selector::parse(".p2>li>a").unwrap();
+            let result: Vec<(String, String)> = html
+                .select(&charpt_selector)
+                .rev()
+                .map( |e| {
+                    if let Some(href) = e.value().attr("href") {
+        
+                            if  let Ok(url) = base.join(href){
+        
+                                let inner_html = e.inner_html();
+                                let url_string = url.to_string();
+                                return (inner_html, url_string);
+                            }
+                    } 
+                    (e.inner_html(), String::new())
+                })
+                .collect();
+
+                if  let Ok(url) = base.join(url){
+                    let p =Page { url: url.to_string(), is_last: false, charpter_links: result};
+                    return Ok(p);
+                }
+      
+        }
+    }
+
+    Ok(Page { url: "".to_string(), 
+        is_last: true,
+        charpter_links: vec![]
+     })
 }
