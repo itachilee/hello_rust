@@ -6,198 +6,125 @@ use tokio::time;
 use tokio::time::Instant;
 
 use clap::Parser;
+use regex::Regex;
 
 
 
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Name of the person to greet
+    #[arg(short, long)]
+    name: String,
 
-
+    /// Number of times to greet
+    #[arg(short, long, default_value_t = 1)]
+    count: u8,
+}
 
 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
+    // let args = Args::parse();
 
-    let start_url ="https://m.jcdf99.com/html/18312_39/#all";
-    let mut current_url = start_url.to_string();
+    // for _ in 0..args.count {
+    //     println!("Hello {}!", args.name)
+    // }
+
     let base_url ="https://m.jcdf99.com/";
+    let start_url ="https://m.jcdf99.com/html/18312/9950547.html";
 
+    let base_url = Url::parse(base_url).unwrap();
+    let mut current_url = start_url.to_string();
 
-    let mut pages: Vec<Page> = Vec::new();
+    let mut texts: Vec<String> =vec![];
+    let mut count =1;
     loop {
 
+        let start =Instant::now();
+        // let res = reqwest::get(url).await?.text().await?;
 
-        if let Ok(base) = Url::parse(base_url){
-            if  let Ok(url) = base.join(current_url.as_str()){
+        let res =do_get(current_url.as_str()).await?;
+        println!("visiting :{} eplased: {:?}",current_url,start.elapsed());
 
-                current_url = url.to_string();
-            }
-       }
-        let links = extract_links_from_page(&current_url).await;
-
-        // wait 
-        time::sleep(time::Duration::from_millis(500)).await;
-        if let Ok(links) =links{
-                current_url = links.url.clone();
-    
-                pages.push(links.clone());
-                if links.is_last{
-                    break;
-                }
-        }
-        else if let Err(e) = links{
-            println!(" err:{}",e);
+        let html = Html::parse_document(&res);
+        let novel_selector = Selector::parse(".novelcontent").unwrap();
+        if let Some(text) = extract_html_text(&html, &novel_selector){
+            texts.push(text);
+        }else{
             break;
         }
-        else{
-            println!("break else");
+
+        let next =is_has_next_charpter_page(&html);
+        if next.0{
+            current_url = base_url.join( &next.1).unwrap().to_string();
+        }else{
             break;
         }
-       
+        count +=1;
+        if count >2{
+            break;
+        }
     }
-    // todo: iter all page and iter page's charpter
-    for i in pages.iter(){
-     
-        // if !i.is_last{
-        //     println!("[iter] {}, {:?}",i.url,i.charpters);
-        // }
-
-
-        println!("{:?}",i);
+    for i in texts.iter(){
+        println!("{:?}\r\n\r\n\r\n\r\n",i);
     }
     Ok(())
 }
 
 
 
-#[derive(PartialEq, Eq,Clone,Debug)]
-struct Page{
-    url: String,
-    is_last: bool,
-    charpters: Vec<Charpter>
-}
-impl Page {
-
-    fn default()-> Self{
-
-        Self { url: String::new(), is_last: false, charpters: vec![] }
-    }
-    fn print(&self) {
-        let line_number = line!();
-        println!("[line:{}]Page url: {} is_last:{}",line_number, self.url,self.is_last);
-    }
-
-  
-}
-
-#[derive(PartialEq, Eq,Clone,Debug)]
-struct Charpter{
-    url: String,
-    text: String,
-    title: String
-}
-impl Charpter {
-    fn default() ->Self{
-        Self { url: String::new(), text: String::new(), title: String::new() }
-    }
-}
-
-
-async fn extract_links_from_page(url: &str) -> Result<Page,Box::<dyn std::error::Error>> {
-
-    let base_url ="https://m.jcdf99.com/";
-
-    let base =Url::parse(base_url).unwrap();
-    let next_page_selector = Selector::parse(".right>.onclick").unwrap();
-
-    let start =Instant::now();
-    // let res = reqwest::get(url).await?.text().await?;
-
-    let res =do_get(url).await?;
-    println!("visiting :{} eplased: {:?}",url,start.elapsed());
-    let html = Html::parse_document(&res);
-
-    let charpt_selector = Selector::parse(".p2>li>a").unwrap();
-
-    if let Some(e) =html.select(&next_page_selector).next() {
-        if let Some(href) = e.value().attr("href") {
-
-
-            let mut p =Page::default();
-
-            p.is_last =true;
-            if  let Ok(url) = base.join(href){
-                p.url = url.to_string();
-            }
-
-            let charpters: Vec<Charpter> = html
-                .select(&charpt_selector)
-                .rev()
-                .map( |e| {
-                    if let Some(charp_href) = e.value().attr("href") {
-                            if  let Ok(charp_url) = base.join(charp_href){
-                                let inner_html = e.inner_html();
-                                let url_string = charp_url.to_string();
-                                return Charpter{
-                                    url: url_string,
-                                    title: inner_html,
-                                    text: String::new()
-                                };
-                            }
-                    } 
-                    Charpter::default()
-                })
-                .collect();
-
-            p.charpters =charpters;
-      
-            return  Ok(p);
-        }
-    }
-
-    Ok(Page::default())
-}
-
-
-// 获取下一页的内容
-async fn extract_charpter_perpage() ->Result<(),Box::<dyn std::error::Error>>{
 
 
 
-    Ok(())
-}
 
 
-/// 获取每章详情页的文本
-async fn extract_novel_from_charpter(url: &str) ->Result<(),Box::<dyn std::error::Error>>{
+/// 获取页面中文章正文
 
-    let start =Instant::now();
-    // let res = reqwest::get(url).await?.text().await?;
-
-    let res =do_get(url).await?;
-
-    let html = Html::parse_document(&res);
-
-
-    let novel_selector = Selector::parse(".novelcontent").unwrap();
-    let result: String = html
-        .select(&novel_selector)
+fn extract_html_text(html: &Html,selector: &Selector) ->Option<String>{
+   Some(html
+        .select(&selector)
         .rev()
         .map( |e| {
             // let inner_html = e.inner_html();
 
             let text = e.text().collect::<Vec<&str>>().join("\r\n");
-            return text;
+            let re = Regex::new(r"[\u{00A0}\r\n\t]").unwrap();
+            let replaced_content = re.replace_all(&text, " ")
+            // .replace("\r", " ")
+            // .replace("\n", " ")
+            // .replace("\t", "  ")
+            // .replace("\t", "  ")
+            .to_string();
+            return replaced_content;
         })
         .collect
         ::<Vec<String>>()
         .join("\r\n")
-        ;
-
-
-        println!("body: {}\r\n elapsed: {:?}",
-            result,
-            start.elapsed());
-     
-    Ok(())
+    )
 }
+
+
+/// 判断当前章是否存在下一页
+/// has_nex | next_page_url
+ fn is_has_next_charpter_page(html: &Html) ->(bool,String){
+
+
+    let next_cpage_seletor = Selector::parse(".page_chapter>ul>li>.p4").unwrap();
+
+    if let Some(e) = html.select(&next_cpage_seletor).last(){
+
+        if let Some(next_cpage) =e.attr("href")  {
+
+            if "下一页" == e.text().collect::<Vec<&str>>().join("\r\n"){
+                return (true,next_cpage.to_string());
+            }
+        }
+    }
+
+    (false,String::new())
+}
+

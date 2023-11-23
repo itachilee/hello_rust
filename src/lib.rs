@@ -61,8 +61,6 @@ pub async fn downloaded_image(url: &str)-> Result<(),Box::<dyn std::error::Error
                     // 记录已访问过的页面 URL
                     visited_urls.insert(url.to_string());
 
-                    // 假设这里有一些爬取逻辑，处理页面内容
-
                     // 这里可以添加延时，避免频繁请求
                     // tokio::time::sleep(Duration::from_secs(5)).await;
                 } else {
@@ -194,4 +192,27 @@ mod tests {
         assert_eq!( true, r1.is_empty());
 
     }
+
+
+
+    #[tokio::test]
+    async fn test_save_files(){
+
+
+        let _= super::save_chapter_to_file(1,"t1","c1").await;
+        let _= super::save_chapter_to_file(2,"t2","c2").await;
+
+        assert!(true);
+
+    }
+
+    #[tokio::test]
+    async fn test_merge_chapters_to_file(){
+
+
+        let charpter = [String::new(),String::new()];
+        let _= super::merge_chapters_to_file(&charpter).await;
+        assert!(true);
+    }
+
 }
